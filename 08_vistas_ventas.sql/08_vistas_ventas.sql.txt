@@ -1,0 +1,232 @@
+-- VISTAS PARA MODELO DE VENTAS
+USE DWNorthwind;
+GO
+
+PRINT '=== CREANDO VISTAS PARA ANÁLISIS DE VENTAS ===';
+GO
+
+-- ============================================
+-- VISTA 1: DETALLE COMPLETO DE VENTAS
+-- ============================================
+PRINT 'Creando vw_DetalleVentasCompleto...';
+GO
+
+CREATE VIEW vw_DetalleVentasCompleto
+AS
+SELECT 
+    fv.VentaKey,
+    fv.OrdenID,
+    dp.NombreProducto,
+    dp.Marca,
+    dc.NombreCategoria,
+    dc.SubCategoria,
+    c.CustomerName AS Cliente,
+    c.Country AS PaisCliente,
+    e.EmployeeName AS Vendedor,
+    s.ShipName AS Transportista,
+    dt.TipoEntrega,
+    dtf.Fecha,
+    dtf.Anio,
+    dtf.Mes,
+    dtf.NombreMes,
+    dtf.Trimestre,
+    fv.CantidadVendida,
+    fv.PrecioUnitario,
+    fv.MontoVenta,
+    fv.Descuento,
+    ROUND((fv.Descuento * 100.0 / NULLIF(fv.MontoVenta + fv.Descuento, 0)), 2) AS PorcentajeDescuento,
+    dp.TiempoEntregaPromedioDias,
+    fv.FechaCreacionDW
+FROM FactVentas fv
+INNER JOIN DimProducto dp ON fv.ProductoKey = dp.ProductoKey
+INNER JOIN DimCategoria dc ON dp.CategoriaKey = dc.CategoriaKey
+INNER JOIN DimCustomers c ON fv.ClienteID = c.CustomerKey
+INNER JOIN DimEmployees e ON fv.EmpleadoID = e.EmployeeKey
+INNER JOIN DimShippers s ON fv.ShipID = s.ShipKey
+INNER JOIN DimTipoEntrega dt ON fv.TipoEntregaKey = dt.TipoEntregaKey
+INNER JOIN DimTiempo dtf ON fv.FechaKey = dtf.FechaKey;
+GO
+
+PRINT '✅ vw_DetalleVentasCompleto creada';
+GO
+
+-- ============================================
+-- VISTA 2: VENTAS POR CATEGORÍA
+-- ============================================
+PRINT 'Creando vw_VentasPorCategoria...';
+GO
+
+CREATE VIEW vw_VentasPorCategoria
+AS
+SELECT 
+    dc.NombreCategoria,
+    dc.SubCategoria,
+    COUNT(DISTINCT fv.VentaKey) AS TotalVentas,
+    SUM(fv.CantidadVendida) AS TotalUnidadesVendidas,
+    SUM(fv.MontoVenta) AS TotalVentasMonetarias,
+    AVG(fv.PrecioUnitario) AS PrecioPromedio,
+    COUNT(DISTINCT fv.ClienteID) AS ClientesUnicos,
+    MIN(dtf.Fecha) AS PrimeraVenta,
+    MAX(dtf.Fecha) AS UltimaVenta
+FROM FactVentas fv
+INNER JOIN DimProducto dp ON fv.ProductoKey = dp.ProductoKey
+INNER JOIN DimCategoria dc ON dp.CategoriaKey = dc.CategoriaKey
+INNER JOIN DimTiempo dtf ON fv.FechaKey = dtf.FechaKey
+GROUP BY dc.NombreCategoria, dc.SubCategoria;
+GO
+
+PRINT '✅ vw_VentasPorCategoria creada';
+GO
+
+-- ============================================
+-- VISTA 3: TOP 10 PRODUCTOS MÁS VENDIDOS
+-- ============================================
+PRINT 'Creando vw_TopProductos...';
+GO
+
+CREATE VIEW vw_TopProductos
+AS
+SELECT TOP 10
+    dp.NombreProducto,
+    dc.NombreCategoria,
+    SUM(fv.CantidadVendida) AS TotalUnidadesVendidas,
+    SUM(fv.MontoVenta) AS TotalIngresos,
+    COUNT(DISTINCT fv.ClienteID) AS ClientesUnicos,
+    RANK() OVER (ORDER BY SUM(fv.CantidadVendida) DESC) AS RankingUnidades,
+    RANK() OVER (ORDER BY SUM(fv.MontoVenta) DESC) AS RankingIngresos
+FROM FactVentas fv
+INNER JOIN DimProducto dp ON fv.ProductoKey = dp.ProductoKey
+INNER JOIN DimCategoria dc ON dp.CategoriaKey = dc.CategoriaKey
+GROUP BY dp.NombreProducto, dc.NombreCategoria;
+GO
+
+PRINT '✅ vw_TopProductos creada';
+GO
+
+-- ============================================
+-- VISTA 4: VENTAS MENSUALES
+-- ============================================
+PRINT 'Creando vw_VentasMensualesDetalle...';
+GO
+
+CREATE VIEW vw_VentasMensualesDetalle
+AS
+SELECT 
+    dt.Anio,
+    dt.Mes,
+    dt.NombreMes,
+    dt.Trimestre,
+    COUNT(DISTINCT fv.VentaKey) AS TotalTransacciones,
+    SUM(fv.CantidadVendida) AS TotalUnidades,
+    SUM(fv.MontoVenta) AS TotalVentas,
+    SUM(fv.Descuento) AS TotalDescuentos,
+    COUNT(DISTINCT fv.ClienteID) AS ClientesActivos,
+    COUNT(DISTINCT fv.ProductoKey) AS ProductosVendidos,
+    AVG(fv.MontoVenta) AS TicketPromedio
+FROM FactVentas fv
+INNER JOIN DimTiempo dt ON fv.FechaKey = dt.FechaKey
+GROUP BY dt.Anio, dt.Mes, dt.NombreMes, dt.Trimestre;
+GO
+
+PRINT '✅ vw_VentasMensualesDetalle creada';
+GO
+
+-- ============================================
+-- VISTA 5: ANÁLISIS DE ENTREGAS
+-- ============================================
+PRINT 'Creando vw_AnalisisEntregas...';
+GO
+
+CREATE VIEW vw_AnalisisEntregas
+AS
+SELECT 
+    dte.TipoEntrega,
+    dte.TiempoEntregaMin,
+    dte.TiempoEntregaMax,
+    COUNT(fv.VentaKey) AS TotalEntregas,
+    SUM(fv.MontoVenta) AS ValorEntregado,
+    AVG(dp.TiempoEntregaPromedioDias) AS TiempoPromedioReal,
+    COUNT(DISTINCT fv.ClienteID) AS ClientesUsuarios,
+    ROUND(COUNT(fv.VentaKey) * 100.0 / (SELECT COUNT(*) FROM FactVentas), 2) AS PorcentajeUso
+FROM FactVentas fv
+INNER JOIN DimTipoEntrega dte ON fv.TipoEntregaKey = dte.TipoEntregaKey
+INNER JOIN DimProducto dp ON fv.ProductoKey = dp.ProductoKey
+GROUP BY dte.TipoEntrega, dte.TiempoEntregaMin, dte.TiempoEntregaMax;
+GO
+
+PRINT '✅ vw_AnalisisEntregas creada';
+GO
+
+-- ============================================
+-- VISTA 6: INVENTARIO Y VENTAS
+-- ============================================
+PRINT 'Creando vw_InventarioVentas...';
+GO
+
+CREATE VIEW vw_InventarioVentas
+AS
+SELECT 
+    dp.ProductoIDOrigen,
+    dp.NombreProducto,
+    dc.NombreCategoria,
+    dp.UnidadMedida,
+    dp.PrecioUnitario AS PrecioActual,
+    dp.UnidadesEnStock,
+    dp.EstadoProducto,
+    COALESCE(SUM(fv.CantidadVendida), 0) AS TotalVendido,
+    COALESCE(SUM(fv.MontoVenta), 0) AS TotalIngresos,
+    CASE 
+        WHEN dp.UnidadesEnStock = 0 THEN 'AGOTADO'
+        WHEN dp.UnidadesEnStock < 10 THEN 'BAJO STOCK'
+        WHEN dp.UnidadesEnStock > 100 THEN 'ALTO STOCK'
+        ELSE 'STOCK NORMAL'
+    END AS NivelStock,
+    ROUND(COALESCE(SUM(fv.CantidadVendida), 0) * 1.0 / NULLIF(dp.UnidadesEnStock + COALESCE(SUM(fv.CantidadVendida), 0), 0) * 100, 2) AS PorcentajeRotacion
+FROM DimProducto dp
+INNER JOIN DimCategoria dc ON dp.CategoriaKey = dc.CategoriaKey
+LEFT JOIN FactVentas fv ON dp.ProductoKey = fv.ProductoKey
+GROUP BY 
+    dp.ProductoIDOrigen,
+    dp.NombreProducto,
+    dc.NombreCategoria,
+    dp.UnidadMedida,
+    dp.PrecioUnitario,
+    dp.UnidadesEnStock,
+    dp.EstadoProducto;
+GO
+
+PRINT '✅ vw_InventarioVentas creada';
+GO
+
+PRINT '=== VISTAS DE VENTAS CREADAS EXITOSAMENTE ===';
+GO
+
+-- ============================================
+-- PRUEBAS DE LAS VISTAS
+-- ============================================
+PRINT ' ';
+PRINT '=== PRUEBAS DE VISTAS ===';
+
+PRINT '1. Detalle de ventas (primeros 5 registros):';
+SELECT TOP 5 * FROM vw_DetalleVentasCompleto ORDER BY VentaKey;
+GO
+
+PRINT '2. Ventas por categoría:';
+SELECT * FROM vw_VentasPorCategoria ORDER BY TotalVentasMonetarias DESC;
+GO
+
+PRINT '3. Top productos:';
+SELECT * FROM vw_TopProductos ORDER BY RankingUnidades;
+GO
+
+PRINT '4. Resumen mensual:';
+SELECT * FROM vw_VentasMensualesDetalle ORDER BY Anio DESC, Mes DESC;
+GO
+
+PRINT '5. Análisis de entregas:';
+SELECT * FROM vw_AnalisisEntregas;
+GO
+
+PRINT '6. Inventario vs ventas:';
+SELECT TOP 10 * FROM vw_InventarioVentas WHERE EstadoProducto = 'Activo' ORDER BY TotalVendido DESC;
+GO

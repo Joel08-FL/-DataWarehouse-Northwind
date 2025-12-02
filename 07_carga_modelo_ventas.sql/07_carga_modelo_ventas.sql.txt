@@ -1,0 +1,213 @@
+-- CARGA DE DATOS - MODELO DE VENTAS
+USE DWNorthwind;
+GO
+
+PRINT '=== CARGA DE DATOS PARA MODELO DE VENTAS ===';
+GO
+
+-- ============================================
+-- 1. CARGAR DIMCATEGORIA DESDE NORTHWIND
+-- ============================================
+PRINT 'Cargando DimCategoria...';
+
+INSERT INTO DimCategoria (NombreCategoria, SubCategoria, Descripcion)
+SELECT 
+    c.CategoryName AS NombreCategoria,
+    NULL AS SubCategoria,  -- Northwind no tiene subcategorías
+    c.Description AS Descripcion
+FROM Northwind.dbo.Categories c;
+
+PRINT '✅ Categorías cargadas: ' + CAST(@@ROWCOUNT AS VARCHAR);
+GO
+
+-- ============================================
+-- 2. CARGAR DIMPRODUCTO DESDE NORTHWIND
+-- ============================================
+PRINT 'Cargando DimProducto...';
+
+INSERT INTO DimProducto (
+    ProductoIDOrigen,
+    NombreProducto,
+    CategoriaKey,
+    Marca,
+    UnidadMedida,
+    PrecioUnitario,
+    UnidadesEnStock,
+    EstadoProducto,
+    TiempoEntregaPromedioDias
+)
+SELECT 
+    p.ProductID AS ProductoIDOrigen,
+    p.ProductName AS NombreProducto,
+    dc.CategoriaKey,  -- Obtenemos la clave de categoría
+    NULL AS Marca,    -- Northwind no tiene marca específica
+    p.QuantityPerUnit AS UnidadMedida,
+    p.UnitPrice AS PrecioUnitario,
+    p.UnitsInStock AS UnidadesEnStock,
+    CASE 
+        WHEN p.Discontinued = 1 THEN 'Descontinuado'
+        WHEN p.UnitsInStock = 0 THEN 'Agotado'
+        ELSE 'Activo'
+    END AS EstadoProducto,
+    5 AS TiempoEntregaPromedioDias  -- Valor por defecto
+FROM Northwind.dbo.Products p
+INNER JOIN Northwind.dbo.Categories c ON p.CategoryID = c.CategoryID
+INNER JOIN DimCategoria dc ON c.CategoryName = dc.NombreCategoria;
+
+PRINT '✅ Productos cargados: ' + CAST(@@ROWCOUNT AS VARCHAR);
+GO
+
+-- ============================================
+-- 3. CARGAR DIMTIEMPO (SI ES NECESARIO)
+-- ============================================
+PRINT 'Verificando carga de DimTiempo...';
+
+IF (SELECT COUNT(*) FROM DimTiempo) = 0
+BEGIN
+    PRINT 'Cargando DimTiempo con datos de ejemplo...';
+    
+    -- Insertar fechas desde 1996 hasta 1998 (rango de Northwind)
+    DECLARE @FechaInicio DATE = '1996-01-01';
+    DECLARE @FechaFin DATE = '1998-12-31';
+    DECLARE @FechaActual DATE = @FechaInicio;
+    
+    WHILE @FechaActual <= @FechaFin
+    BEGIN
+        INSERT INTO DimTiempo (
+            FechaKey,
+            Fecha,
+            Anio,
+            Semestre,
+            Trimestre,
+            Mes,
+            NombreMes,
+            Semana,
+            Dia,
+            NombreDia,
+            EsFinDeSemana,
+            Temporada
+        )
+        VALUES (
+            CONVERT(INT, FORMAT(@FechaActual, 'yyyyMMdd')), -- FechaKey
+            @FechaActual, -- Fecha
+            YEAR(@FechaActual), -- Anio
+            CASE WHEN MONTH(@FechaActual) <= 6 THEN 1 ELSE 2 END, -- Semestre
+            DATEPART(QUARTER, @FechaActual), -- Trimestre
+            MONTH(@FechaActual), -- Mes
+            DATENAME(MONTH, @FechaActual), -- NombreMes
+            DATEPART(WEEK, @FechaActual), -- Semana
+            DAY(@FechaActual), -- Dia
+            DATENAME(WEEKDAY, @FechaActual), -- NombreDia
+            CASE WHEN DATEPART(WEEKDAY, @FechaActual) IN (1, 7) THEN 1 ELSE 0 END, -- EsFinDeSemana
+            CASE 
+                WHEN MONTH(@FechaActual) IN (12, 1, 2) THEN 'Invierno'
+                WHEN MONTH(@FechaActual) IN (3, 4, 5) THEN 'Primavera'
+                WHEN MONTH(@FechaActual) IN (6, 7, 8) THEN 'Verano'
+                ELSE 'Otoño'
+            END -- Temporada
+        );
+        
+        SET @FechaActual = DATEADD(DAY, 1, @FechaActual);
+    END;
+    
+    PRINT '✅ Fechas cargadas en DimTiempo: ' + CAST(@@ROWCOUNT AS VARCHAR);
+END
+ELSE
+BEGIN
+    PRINT '✅ DimTiempo ya tiene datos';
+END
+GO
+
+-- ============================================
+-- 4. CARGAR DIMTIPOENTREGA
+-- ============================================
+PRINT 'Cargando DimTipoEntrega...';
+
+INSERT INTO DimTipoEntrega (TipoEntrega, TiempoEntregaMin, TiempoEntregaMax, CostoAdicional, Descripcion)
+VALUES 
+    ('Estándar', 5, 10, 0.00, 'Entrega regular dentro de 5-10 días hábiles'),
+    ('Express', 2, 3, 15.00, 'Entrega rápida en 2-3 días hábiles'),
+    ('Prioritario', 1, 2, 25.00, 'Entrega prioritaria en 1-2 días hábiles'),
+    ('Gratuita', 7, 14, 0.00, 'Entrega gratuita para pedidos mayores a $100');
+
+PRINT '✅ Tipos de entrega cargados: ' + CAST(@@ROWCOUNT AS VARCHAR);
+GO
+
+-- ============================================
+-- 5. CARGAR FACTVENTAS DESORDER DETAILS
+-- ============================================
+PRINT 'Cargando FactVentas desde Order Details...';
+
+INSERT INTO FactVentas (
+    ProductoKey,
+    FechaKey,
+    CantidadVendida,
+    PrecioUnitario,
+    MontoVenta,
+    Descuento,
+    ClienteID,
+    EmpleadoID,
+    ShipID,
+    OrdenID,
+    TipoEntregaKey
+)
+SELECT 
+    dp.ProductoKey,  -- ProductoKey desde DimProducto
+    CONVERT(INT, FORMAT(o.OrderDate, 'yyyyMMdd')),  -- FechaKey
+    od.Quantity AS CantidadVendida,
+    od.UnitPrice AS PrecioUnitario,
+    (od.Quantity * od.UnitPrice * (1 - od.Discount)) AS MontoVenta,
+    (od.Quantity * od.UnitPrice * od.Discount) AS Descuento,
+    c.CustomerKey AS ClienteID,  -- CustomerKey desde DimCustomers
+    e.EmployeeKey AS EmpleadoID,  -- EmployeeKey desde DimEmployees
+    s.ShipKey AS ShipID,  -- ShipKey desde DimShippers
+    fo.OrderKey AS OrdenID,  -- OrderKey desde FactOrders
+    CASE 
+        WHEN o.Freight < 50 THEN 1  -- Estándar
+        WHEN o.Freight BETWEEN 50 AND 100 THEN 2  -- Express
+        ELSE 3  -- Prioritario
+    END AS TipoEntregaKey
+FROM Northwind.dbo.[Order Details] od
+INNER JOIN Northwind.dbo.Orders o ON od.OrderID = o.OrderID
+INNER JOIN DimProducto dp ON od.ProductID = dp.ProductoIDOrigen
+INNER JOIN DimCustomers c ON o.CustomerID = c.CustomerID
+INNER JOIN DimEmployees e ON o.EmployeeID = e.EmployeeID
+INNER JOIN DimShippers s ON o.ShipVia = s.ShipID
+INNER JOIN FactOrders fo ON o.OrderID = fo.OrderDetailsID;
+
+PRINT '✅ Ventas cargadas: ' + CAST(@@ROWCOUNT AS VARCHAR);
+GO
+
+-- ============================================
+-- 6. VERIFICACIÓN FINAL
+-- ============================================
+PRINT ' ';
+PRINT '=== VERIFICACIÓN DE CARGA ===';
+
+SELECT 
+    'DimCategoria' AS Tabla,
+    COUNT(*) AS Registros
+FROM DimCategoria
+UNION ALL
+SELECT 
+    'DimProducto',
+    COUNT(*)
+FROM DimProducto
+UNION ALL
+SELECT 
+    'DimTiempo',
+    COUNT(*)
+FROM DimTiempo
+UNION ALL
+SELECT 
+    'DimTipoEntrega',
+    COUNT(*)
+FROM DimTipoEntrega
+UNION ALL
+SELECT 
+    'FactVentas',
+    COUNT(*)
+FROM FactVentas;
+
+PRINT '=== CARGA COMPLETADA ===';
+GO

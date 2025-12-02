@@ -1,0 +1,191 @@
+USE DWNorthwind;
+GO
+
+PRINT '=== EXPANSIÓN DEL MODELO: PRODUCTOS Y VENTAS ===';
+GO
+
+-- ============================================
+-- 1. CREAR DIMCATEGORIA
+-- ============================================
+PRINT 'Creando DimCategoria...';
+
+IF OBJECT_ID('dbo.DimCategoria', 'U') IS NOT NULL
+    DROP TABLE dbo.DimCategoria;
+GO
+
+CREATE TABLE DimCategoria (
+    CategoriaKey INT IDENTITY(1,1) PRIMARY KEY,
+    NombreCategoria NVARCHAR(100) NOT NULL,
+    SubCategoria NVARCHAR(100),
+    Descripcion NVARCHAR(500),
+    FechaCreacionDW DATETIME DEFAULT GETDATE()
+);
+GO
+
+PRINT '✅ DimCategoria creada';
+GO
+
+-- ============================================
+-- 2. CREAR DIMPRODUCTO
+-- ============================================
+PRINT 'Creando DimProducto...';
+
+IF OBJECT_ID('dbo.DimProducto', 'U') IS NOT NULL
+    DROP TABLE dbo.DimProducto;
+GO
+
+CREATE TABLE DimProducto (
+    ProductoKey INT IDENTITY(1,1) PRIMARY KEY,
+    ProductoIDOrigen INT NOT NULL,          -- ID original de Northwind
+    NombreProducto NVARCHAR(100) NOT NULL,
+    CategoriaKey INT NOT NULL,              -- FK a DimCategoria
+    Marca NVARCHAR(50),
+    UnidadMedida NVARCHAR(20),              -- Ej: 'cajas', 'unidades', 'kg'
+    PrecioUnitario DECIMAL(10,2),
+    UnidadesEnStock INT,
+    EstadoProducto NVARCHAR(20) DEFAULT 'Activo', -- 'Activo', 'Descontinuado', 'Agotado'
+    TiempoEntregaPromedioDias INT,          -- Días promedio para entrega
+    FechaCreacionDW DATETIME DEFAULT GETDATE(),
+    
+    FOREIGN KEY (CategoriaKey) REFERENCES DimCategoria(CategoriaKey)
+);
+GO
+
+PRINT '✅ DimProducto creada';
+GO
+
+-- ============================================
+-- 3. CREAR DIMTIEMPO (si no existe)
+-- ============================================
+PRINT 'Verificando DimTiempo...';
+
+IF NOT EXISTS (SELECT * FROM sys.tables WHERE name = 'DimTiempo')
+BEGIN
+    PRINT 'Creando DimTiempo...';
+    
+    CREATE TABLE DimTiempo (
+        FechaKey INT PRIMARY KEY,           -- Formato: YYYYMMDD
+        Fecha DATE NOT NULL,
+        Anio INT NOT NULL,
+        Semestre INT NOT NULL,              -- 1 o 2
+        Trimestre INT NOT NULL,             -- 1, 2, 3 o 4
+        Mes INT NOT NULL,                   -- 1-12
+        NombreMes NVARCHAR(20) NOT NULL,
+        Semana INT NOT NULL,                -- 1-52
+        Dia INT NOT NULL,                   -- 1-31
+        NombreDia NVARCHAR(20) NOT NULL,    -- Lunes, Martes, etc.
+        EsFinDeSemana BIT NOT NULL,         -- 1 = fin de semana, 0 = día laboral
+        EsFestivo BIT DEFAULT 0,
+        Temporada NVARCHAR(20),             -- 'Alta', 'Baja', 'Media'
+        FechaCreacionDW DATETIME DEFAULT GETDATE()
+    );
+    
+    PRINT '✅ DimTiempo creada';
+END
+ELSE
+BEGIN
+    PRINT '✅ DimTiempo ya existe';
+END
+GO
+
+-- ============================================
+-- 4. CREAR FACTVENTAS
+-- ============================================
+PRINT 'Creando FactVentas...';
+
+IF OBJECT_ID('dbo.FactVentas', 'U') IS NOT NULL
+    DROP TABLE dbo.FactVentas;
+GO
+
+CREATE TABLE FactVentas (
+    VentaKey INT IDENTITY(1,1) PRIMARY KEY,
+    ProductoKey INT NOT NULL,               -- FK a DimProducto
+    FechaKey INT NOT NULL,                  -- FK a DimTiempo (formato YYYYMMDD)
+    CantidadVendida INT NOT NULL,
+    PrecioUnitario DECIMAL(10,2) NOT NULL,
+    MontoVenta DECIMAL(12,2) NOT NULL,     -- CantidadVendida * PrecioUnitario
+    Descuento DECIMAL(10,2) DEFAULT 0,
+    ClienteID INT NOT NULL,                 -- FK a DimCustomers (CustomerKey)
+    EmpleadoID INT,                         -- FK a DimEmployees (opcional)
+    ShipID INT,                             -- FK a DimShippers (opcional)
+    OrdenID INT,                            -- Referencia a FactOrders (opcional)
+    FechaCreacionDW DATETIME DEFAULT GETDATE(),
+    
+    -- Restricciones de integridad
+    CHECK (CantidadVendida > 0),
+    CHECK (PrecioUnitario >= 0),
+    CHECK (MontoVenta >= 0),
+    CHECK (Descuento >= 0),
+    
+    -- Claves foráneas
+    FOREIGN KEY (ProductoKey) REFERENCES DimProducto(ProductoKey),
+    FOREIGN KEY (ClienteID) REFERENCES DimCustomers(CustomerKey),
+    FOREIGN KEY (EmpleadoID) REFERENCES DimEmployees(EmployeeKey),
+    FOREIGN KEY (ShipID) REFERENCES DimShippers(ShipKey),
+    FOREIGN KEY (OrdenID) REFERENCES FactOrders(OrderKey)
+);
+GO
+
+-- Crear índice para mejorar rendimiento en consultas por fecha
+CREATE INDEX IX_FactVentas_FechaKey ON FactVentas(FechaKey);
+CREATE INDEX IX_FactVentas_ProductoKey ON FactVentas(ProductoKey);
+CREATE INDEX IX_FactVentas_ClienteID ON FactVentas(ClienteID);
+
+PRINT '✅ FactVentas creada con índices';
+GO
+
+-- ============================================
+-- 5. TABLA DIMENSIÓN ADICIONAL: DIMTIPOENTREGA
+-- ============================================
+PRINT 'Creando DimTipoEntrega...';
+
+IF OBJECT_ID('dbo.DimTipoEntrega', 'U') IS NOT NULL
+    DROP TABLE dbo.DimTipoEntrega;
+GO
+
+CREATE TABLE DimTipoEntrega (
+    TipoEntregaKey INT IDENTITY(1,1) PRIMARY KEY,
+    TipoEntrega NVARCHAR(50) NOT NULL,      -- 'Estándar', 'Express', 'Prioritario'
+    TiempoEntregaMin INT,                   -- Días mínimos
+    TiempoEntregaMax INT,                   -- Días máximos
+    CostoAdicional DECIMAL(10,2),
+    Descripcion NVARCHAR(200),
+    FechaCreacionDW DATETIME DEFAULT GETDATE()
+);
+GO
+
+PRINT '✅ DimTipoEntrega creada';
+GO
+
+-- ============================================
+-- 6. ACTUALIZAR FACTVENTAS CON TIPOENTREGA
+-- ============================================
+PRINT 'Agregando columna TipoEntregaKey a FactVentas...';
+
+IF NOT EXISTS (SELECT * FROM sys.columns 
+               WHERE object_id = OBJECT_ID('FactVentas') 
+               AND name = 'TipoEntregaKey')
+BEGIN
+    ALTER TABLE FactVentas
+    ADD TipoEntregaKey INT,
+        CONSTRAINT FK_FactVentas_TipoEntrega 
+        FOREIGN KEY (TipoEntregaKey) 
+        REFERENCES DimTipoEntrega(TipoEntregaKey);
+    
+    PRINT '✅ Columna TipoEntregaKey agregada';
+END
+ELSE
+BEGIN
+    PRINT '✅ Columna TipoEntregaKey ya existe';
+END
+GO
+
+PRINT '=== ESTRUCTURA DEL MODELO DE VENTAS COMPLETADA ===';
+PRINT ' ';
+PRINT 'Tablas creadas:';
+PRINT '1. DimCategoria';
+PRINT '2. DimProducto';
+PRINT '3. DimTiempo (si no existía)';
+PRINT '4. FactVentas';
+PRINT '5. DimTipoEntrega';
+GO
