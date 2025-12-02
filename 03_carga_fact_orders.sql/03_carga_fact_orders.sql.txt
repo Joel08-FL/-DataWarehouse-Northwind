@@ -1,0 +1,23 @@
+-- CARGA DE FACT ORDERS - DATA WAREHOUSE NORTHWIND
+
+USE DWNorthwind;
+GO
+
+PRINT '=== INICIANDO CARGA DE FACT ORDERS ===';
+
+-- Cargar la tabla de hechos
+INSERT INTO FactOrders (OrderDetailsID, CustomerID, EmployeeID, OrderDate, ShipID, Freight)
+SELECT 
+    o.OrderID,                  -- Número original del pedido
+    c.CustomerKey,              -- Clave de cliente del DW
+    e.EmployeeKey,              -- Clave de empleado del DW
+    o.OrderDate,                -- Fecha original
+    s.ShipKey,                  -- Clave de transportista del DW
+    o.Freight                   -- Costo de envío
+FROM Northwind.dbo.Orders o
+INNER JOIN DimCustomers c ON o.CustomerID = c.CustomerID
+INNER JOIN DimEmployees e ON o.EmployeeID = e.EmployeeID
+INNER JOIN DimShippers s ON o.ShipVia = s.ShipID;
+
+PRINT '✅ FactOrders cargada: ' + CAST(@@ROWCOUNT AS VARCHAR) + ' registros';
+PRINT '=== CARGA DE FACT ORDERS COMPLETADA ===';

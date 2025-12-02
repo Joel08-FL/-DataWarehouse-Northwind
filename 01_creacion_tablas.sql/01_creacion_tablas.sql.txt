@@ -1,0 +1,63 @@
+-- CREACIÓN DEL DATA WAREHOUSE NORTHWIND
+-- Autor: [Tu Nombre]
+-- Fecha: [Fecha actual]
+
+-- 1. Crear base de datos del Data Warehouse
+CREATE DATABASE DWNorthwind;
+GO
+
+USE DWNorthwind;
+GO
+
+-- 2. Crear tabla DimCustomers
+CREATE TABLE DimCustomers (
+    CustomerKey INT IDENTITY(1,1) PRIMARY KEY,
+    CustomerID NVARCHAR(5) NOT NULL,
+    CustomerName NVARCHAR(100) NOT NULL,
+    ContactName NVARCHAR(100),
+    City NVARCHAR(50),
+    Country NVARCHAR(50),
+    CreatedDate DATETIME DEFAULT GETDATE()
+);
+GO
+
+-- 3. Crear tabla DimEmployees
+CREATE TABLE DimEmployees (
+    EmployeeKey INT IDENTITY(1,1) PRIMARY KEY,
+    EmployeeID INT NOT NULL,
+    EmployeeName NVARCHAR(100) NOT NULL,
+    Title NVARCHAR(50),
+    HireDate DATE,
+    CreatedDate DATETIME DEFAULT GETDATE()
+);
+GO
+
+-- 4. Crear tabla DimShippers
+CREATE TABLE DimShippers (
+    ShipKey INT IDENTITY(1,1) PRIMARY KEY,
+    ShipID INT NOT NULL,
+    ShipName NVARCHAR(100) NOT NULL,
+    Phone NVARCHAR(20),
+    CreatedDate DATETIME DEFAULT GETDATE()
+);
+GO
+
+-- 5. Crear tabla FactOrders
+CREATE TABLE FactOrders (
+    OrderKey INT IDENTITY(1,1) PRIMARY KEY,
+    OrderDetailsID INT NOT NULL,
+    CustomerID INT NOT NULL,
+    EmployeeID INT NOT NULL,
+    OrderDate DATE NOT NULL,
+    ShipID INT NOT NULL,
+    Freight DECIMAL(10,2),
+    CreatedDate DATETIME DEFAULT GETDATE(),
+    
+    -- Claves foráneas
+    FOREIGN KEY (CustomerID) REFERENCES DimCustomers(CustomerKey),
+    FOREIGN KEY (EmployeeID) REFERENCES DimEmployees(EmployeeKey),
+    FOREIGN KEY (ShipID) REFERENCES DimShippers(ShipKey)
+);
+GO
+
+PRINT '✅ Todas las tablas creadas exitosamente';

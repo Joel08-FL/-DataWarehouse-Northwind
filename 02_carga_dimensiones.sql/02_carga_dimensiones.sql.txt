@@ -1,0 +1,44 @@
+-- CARGA DE DIMENSIONES - DATA WAREHOUSE NORTHWIND
+
+USE DWNorthwind;
+GO
+
+PRINT '=== INICIANDO CARGA DE DIMENSIONES ===';
+
+-- 1. Cargar Clientes desde Northwind
+PRINT 'Cargando DimCustomers...';
+INSERT INTO DimCustomers (CustomerID, CustomerName, ContactName, City, Country)
+SELECT 
+    CustomerID,
+    CompanyName,
+    ContactName,
+    City,
+    Country
+FROM Northwind.dbo.Customers;
+PRINT '✅ DimCustomers cargada: ' + CAST(@@ROWCOUNT AS VARCHAR) + ' registros';
+GO
+
+-- 2. Cargar Empleados desde Northwind
+PRINT 'Cargando DimEmployees...';
+INSERT INTO DimEmployees (EmployeeID, EmployeeName, Title, HireDate)
+SELECT 
+    EmployeeID,
+    FirstName + ' ' + LastName AS EmployeeName,
+    Title,
+    HireDate
+FROM Northwind.dbo.Employees;
+PRINT '✅ DimEmployees cargada: ' + CAST(@@ROWCOUNT AS VARCHAR) + ' registros';
+GO
+
+-- 3. Cargar Transportistas desde Northwind
+PRINT 'Cargando DimShippers...';
+INSERT INTO DimShippers (ShipID, ShipName, Phone)
+SELECT 
+    ShipperID,
+    CompanyName,
+    Phone
+FROM Northwind.dbo.Shippers;
+PRINT '✅ DimShippers cargada: ' + CAST(@@ROWCOUNT AS VARCHAR) + ' registros';
+GO
+
+PRINT '=== CARGA DE DIMENSIONES COMPLETADA ===';

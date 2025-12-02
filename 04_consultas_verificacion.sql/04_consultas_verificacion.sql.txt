@@ -1,0 +1,59 @@
+-- CONSULTAS DE VERIFICACIÓN - DATA WAREHOUSE NORTHWIND
+
+USE DWNorthwind;
+GO
+
+PRINT '=== VERIFICACIÓN DEL DATA WAREHOUSE ===';
+PRINT ' ';
+
+-- 1. Conteo de registros por tabla
+SELECT 'DimCustomers' AS Tabla, COUNT(*) AS Registros FROM DimCustomers
+UNION ALL
+SELECT 'DimEmployees', COUNT(*) FROM DimEmployees
+UNION ALL
+SELECT 'DimShippers', COUNT(*) FROM DimShippers
+UNION ALL
+SELECT 'FactOrders', COUNT(*) FROM FactOrders;
+GO
+
+PRINT ' ';
+PRINT '=== EJEMPLO DE DATOS INTEGRADOS ===';
+
+-- 2. Consulta de ejemplo con joins
+SELECT TOP 10
+    'Pedido #' + CAST(fo.OrderDetailsID AS VARCHAR) AS Pedido,
+    c.CustomerName AS Cliente,
+    e.EmployeeName AS 'Atendido por',
+    FORMAT(fo.OrderDate, 'dd/MM/yyyy') AS Fecha,
+    s.ShipName AS Transportista,
+    CONCAT('$', CAST(fo.Freight AS DECIMAL(10,2))) AS 'Costo Envío'
+FROM FactOrders fo
+INNER JOIN DimCustomers c ON fo.CustomerID = c.CustomerKey
+INNER JOIN DimEmployees e ON fo.EmployeeID = e.EmployeeKey
+INNER JOIN DimShippers s ON fo.ShipID = s.ShipKey
+ORDER BY fo.OrderDetailsID;
+GO
+
+PRINT ' ';
+PRINT '=== ESTADÍSTICAS ===';
+
+-- 3. Estadísticas básicas
+SELECT 
+    'Total de pedidos' AS Metrica,
+    CAST(COUNT(*) AS VARCHAR) AS Valor
+FROM FactOrders
+UNION ALL
+SELECT 
+    'Clientes con pedidos',
+    CAST(COUNT(DISTINCT CustomerID) AS VARCHAR)
+FROM FactOrders
+UNION ALL
+SELECT 
+    'Rango de fechas',
+    CONCAT(FORMAT(MIN(OrderDate), 'dd/MM/yyyy'), ' - ', FORMAT(MAX(OrderDate), 'dd/MM/yyyy'))
+FROM FactOrders
+UNION ALL
+SELECT 
+    'Total en fletes',
+    CONCAT('$', CAST(SUM(Freight) AS VARCHAR))
+FROM FactOrders;
